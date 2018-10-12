@@ -12,10 +12,72 @@
                                         );
 
 #define CICLOS 10
+#define MAXQUEUE 10
+
+typedef struct _QUEUE {
+	int elements[MAXQUEUE];
+	int head;
+	int tail;
+  int n_elements;
+} QUEUE;
+
+typedef struct semaphore_t {
+  int counter;
+  QUEUE queue;
+} SEMAPHORE;
 
 char *pais[3]={"Peru","Bolvia","Colombia"};
 
 int *g;
+SEMAPHORE *sem;
+
+void initqueue(QUEUE* queue)
+{
+  queue->head = 0;
+  queue->tail = 0;
+  queue->elements = 0;
+}
+
+void push(QUEUE* queue, int val)
+{
+  queue->elements[queue->tail]=val;
+  queue->tail++;
+  queue->tail = queue->tail%MAXQUEUE;
+  queue->n_elements++;
+}
+
+int pop(QUEUE* queue)
+{
+  int value;
+  value = queue->elements[queue->head];
+  queue->head++;
+  queue->head = queue->head%MAXQUEUE;
+  queue->elements--;
+  return(value);
+}
+
+void initsem(SEMAPHORE* sem, int value)
+{
+  sem->counter = value;
+  initqueue(&sem->queue);
+}
+
+void wait_sem(SEMAPHORE* sem)
+{
+  int l = 1;
+  do { atomic_xchg(l,*g); } while(l!=0);
+  if(sem->counter > 0)
+  {
+    sem->counter --;
+  }
+  else
+  {
+    sem->counter--;
+    push(&sem->queue, getpid());
+    kill(getpid(), SIGSTOP);
+  }
+  *g = 0;
+}
 
 void proceso(int i)
 {
@@ -45,7 +107,7 @@ int main()
   int args[3];
   int i;
   void *thread_result;
-  
+
   // Solicitar memoria compartida
   shmid=shmget(0x1234,sizeof(g),0666|IPC_CREAT);
   if(shmid==-1)
