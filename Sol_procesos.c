@@ -24,7 +24,8 @@ typedef struct _QUEUE {
 } QUEUE;
 
 typedef struct semaphore_t {
-  int counter;
+  unsigned int counter;
+  unsigned int blocked;
   QUEUE queue;
 } SEMAPHORE;
 
@@ -66,34 +67,31 @@ void initsem(SEMAPHORE* sem, int value)
 
 void wait_sem(SEMAPHORE* sem)
 {
-  int l = 1;
-  do { atomic_xchg(l,*g); } while(l!=0);
-  if(sem->counter > 0)
+  
+  if(sem->counter==0)
   {
-    sem->counter --;
+    push(&sem->queue, getpid());
+    sem->blocked++;  
+    while(1>sem->blocked);//tenemos que bloquear este proceso pero no se como 
   }
   else
   {
-    sem->counter--;
-    push(&sem->queue, getpid());
-    //kill(getpid(), SIGSTOP);
+    sem->counter --;
   }
-  l=1;
-  *g = 0;
 }
 
 void signal_sem(SEMAPHORE* sem){
-  if(MAXQUEUE>sem->counter)
-    {
-    sem->counter ++;
-    } 
-  else{
-    sem->counter++;
-    pop(&sem->queue);
-   }
-}
 
-void proceso(int i)
+  if(sem->blocked==0)
+   sem->counter ++;
+  else
+  {
+    pop(&sem->queue);
+    sem->blocked--;
+   }
+ }
+
+void proceso(SEMAPHORE* sem,int i)
 {
   int k;
   int l;
@@ -116,11 +114,15 @@ void proceso(int i)
 
 int main()
 {
+  SEMAPHORE semaforo;
+  semaforo.counter = 0;
+  semaforo.blocked = 0;
+  SEMAPHORE*sem = &semaforo;
+
   int pid;
   int status;
   int args[3];
   int i;
-  void *thread_result;
 
   // Solicitar memoria compartida
   shmid=shmget(0x1234,sizeof(g),0666|IPC_CREAT);
@@ -139,7 +141,7 @@ int main()
     exit(2);
   }
 
-  *g=0;
+  initsem(sem,1);
 
   srand(getpid());
 
@@ -148,7 +150,7 @@ int main()
   // Crea un nuevo proceso hijo que ejecuta la función proceso()
     pid=fork();
     if(pid==0)
-      proceso(i);
+      proceso(sem,i);
   }
   for(i=0;i<3;i++)
     pid = wait(&status);
