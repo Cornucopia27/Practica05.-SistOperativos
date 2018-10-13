@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
@@ -16,9 +20,7 @@
 
 typedef struct _QUEUE {
 	int elements[MAXQUEUE];
-	int head;
-	int tail;
-  int n_elements;
+        int n_elements;
 } QUEUE;
 
 typedef struct semaphore_t {
@@ -27,33 +29,33 @@ typedef struct semaphore_t {
 } SEMAPHORE;
 
 char *pais[3]={"Peru","Bolvia","Colombia"};
-
 int *g;
+int shmid;
+
 SEMAPHORE *sem;
 
 void initqueue(QUEUE* queue)
 {
-  queue->head = 0;
-  queue->tail = 0;
-  queue->elements = 0;
+  memset(queue,0,MAXQUEUE);
 }
 
 void push(QUEUE* queue, int val)
 {
-  queue->elements[queue->tail]=val;
-  queue->tail++;
-  queue->tail = queue->tail%MAXQUEUE;
-  queue->n_elements++;
+  if(queue->n_elements<MAXQUEUE){
+	queue->n_elements++;
+	queue->elements[queue->n_elements]=val;
+  }
 }
 
 int pop(QUEUE* queue)
 {
-  int value;
-  value = queue->elements[queue->head];
-  queue->head++;
-  queue->head = queue->head%MAXQUEUE;
-  queue->elements--;
-  return(value);
+  int Qvalue=0;
+  Qvalue = queue->elements[0];
+  for(int i=0;i<(MAXQUEUE-2);i++)
+	queue->elements[i]=queue->elements[i+1];
+  queue->n_elements--;
+  queue->elements[MAXQUEUE-1]=0;
+  return(Qvalue);
 }
 
 void initsem(SEMAPHORE* sem, int value)
@@ -74,9 +76,21 @@ void wait_sem(SEMAPHORE* sem)
   {
     sem->counter--;
     push(&sem->queue, getpid());
-    kill(getpid(), SIGSTOP);
+    //kill(getpid(), SIGSTOP);
   }
+  l=1;
   *g = 0;
+}
+
+void signal_sem(SEMAPHORE* sem){
+  if(MAXQUEUE>sem->counter)
+    {
+    sem->counter ++;
+    } 
+  else{
+    sem->counter++;
+    pop(&sem->queue);
+   }
 }
 
 void proceso(int i)
@@ -85,25 +99,25 @@ void proceso(int i)
   int l;
   for(k=0;k<CICLOS;k++)
   {
-    l=1;
-    do { atomic_xchg(l,*g); } while(l!=0);
+    wait_sem(sem);
+   
     printf("Entra %s",pais[i]);
     fflush(stdout);
     sleep(rand()%3);
     printf("- %s Sale\n",pais[i]);
-    l=1;
-    *g=0;
-    // Espera aleatoria fuera de la sección crítica
+    
+    signal_sem(sem);
+    
     sleep(rand()%3);
   }
   exit(0); // Termina el proceso
 }
 
+
 int main()
 {
   int pid;
   int status;
-  int shmid;
   int args[3];
   int i;
   void *thread_result;
