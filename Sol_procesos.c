@@ -20,14 +20,15 @@
 
 typedef struct _QUEUE
 {
-	int elements[MAXQUEUE];
-        int n_elements;
+  int elements[MAXQUEUE];
+  int head;
+  int tail;
+  int n_elements;
 } QUEUE;
 
 typedef struct semaphore_t
 {
   int counter;
-  //unsigned int blocked;
   QUEUE queue;
 } SEMAPHORE;
 
@@ -42,23 +43,29 @@ void initqueue(QUEUE* queue)
   memset(queue,0,MAXQUEUE);
 }
 
+int Empty(QUEUE * queue) // devuelve 0 a menos que este vacia la cola
+{
+  return(queue->n_elements==0);
+}
+
 void push(QUEUE* queue, int val)
 {
-  if(queue->n_elements<MAXQUEUE){
-	queue->n_elements++;
-	queue->elements[queue->n_elements]=val;
-  }
+  queue->elements[queue->tail]=val;//guarda el valor en la cola
+  queue->tail++;
+  if(queue->tail >= MAXQUEUE)
+    queue->tail = queue->tail-10; //Para siempre tener entre 0 y 9
+  queue->n_elements++;
 }
 
 int pop(QUEUE* queue)
 {
-  int Qvalue=0;
-  Qvalue = queue->elements[0];
-  for(int i=0;i<(MAXQUEUE-2);i++)
-	queue->elements[i]=queue->elements[i+1];
+  int value;
+  value = queue->elements[queue->head];//recupera el valor en la ccabeza
+  queue->head++;
+  if(queue->head >= MAXQUEUE)
+    queue->head = queue->head-10; //Para siempre tener entre 0 y 9
   queue->n_elements--;
-  queue->elements[MAXQUEUE-1]=0;
-  return(Qvalue);
+  return(value);
 }
 
 void initsem(SEMAPHORE* sem, int value)
@@ -88,7 +95,7 @@ void signal_sem(SEMAPHORE* sem)
 {
   int l = 1;
   do { atomic_xchg(l,*f); } while(l!=0); // Puede pasar si otro proceso no esta en esta función
-  if(&sem->queue->n_elements == 0) // Si no hay procesos en espera, se suma al contador
+  if(Empty(&sem->queue)) // Si no hay procesos en espera, se suma al contador
   {
     sem->counter++;
   }
@@ -125,7 +132,7 @@ void proceso(SEMAPHORE* sem,int i)
 
 int main()
 {
-  
+
   int pid;
   int status;
   int args[3];
@@ -142,7 +149,7 @@ int main()
     exit(1);
   }
 
-  // Conectar la variable a la memoria compartida
+  // Conectar las variables a la memoria compartida
   g = shmat(shmid_g,NULL,0);
   f = shmat(shmid_f,NULL,0);
   sem = shmat(shmid_sem,NULL,0);
